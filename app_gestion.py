@@ -6,28 +6,42 @@ import webbrowser
 import threading
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
+from sqlalchemy import create_engine
 
-# ─── CONFIGURACIÓN DE ARCHIVOS ───
-EXCEL_FILE = 'LISTADO DE INSPECTORES ACTUALIZADO.xlsx'
-HTML_OUTPUT = 'Tablero_Inspectores_DPSN.html'
-LOGO_PATH = 'HERALDICO_TNAV.png'
-PORT = 8080
+# Configuración de Base de Datos
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://")
+
+engine = create_engine(DATABASE_URL) if DATABASE_URL else None
+DATABASE_TABLE = "inspectores"
 
 def procesar_y_generar_html():
-    if not os.path.exists(EXCEL_FILE):
-        df_empty = pd.DataFrame(columns=['ZONA', 'GRADO', 'APELLIDO Y NOMBRE', 'ESPECIALIDAD', 'NIVEL', 'CARGO', 'DESTINO', 'TELEFONO', 'CORREO', 'LATITUD Y LONGITUD'])
-        df_empty.to_excel(EXCEL_FILE, index=False)
+    # Intentamos leer primero de PostgreSQL
+    df = None
+    if engine:
+        try:
+            df = pd.read_sql(f"SELECT * FROM {DATABASE_TABLE}", engine)
+            print("📦 Datos leídos con éxito desde PostgreSQL para el mapa.")
+        except Exception as e:
+            print(f"⚠️ Error al leer de la DB, usando Excel de respaldo: {e}")
 
-    df = pd.read_excel(EXCEL_FILE)
+    # Si la DB está vacía o falló, usamos el Excel original
+    if df is None:
+        if not os.path.exists(EXCEL_FILE):
+            df_empty = pd.DataFrame(columns=['ZONA', 'GRADO', 'APELLIDO Y NOMBRE', 'ESPECIALIDAD', 'NIVEL', 'CARGO', 'DESTINO', 'TELEFONO', 'CORREO', 'LATITUD Y LONGITUD'])
+            df_empty.to_excel(EXCEL_FILE, index=False)
+        df = pd.read_excel(EXCEL_FILE)
+
+    # Normalizamos nombres de columnas a mayúsculas
     df.columns = [c.strip().upper() for c in df.columns]
-    
+
     columnas_requeridas = ['ZONA', 'GRADO', 'APELLIDO Y NOMBRE', 'ESPECIALIDAD', 'NIVEL', 'CARGO', 'DESTINO', 'TELEFONO', 'CORREO', 'LATITUD Y LONGITUD']
     for col in columnas_requeridas:
         if col not in df.columns:
             df[col] = ""
         else:
             df[col] = df[col].fillna('').astype(str).replace(['-', '<->', 'nan', 'NAN'], '')
-
     def parse_coords(val):
         try:
             if not val or pd.isna(val) or str(val).strip().upper() in ['NONE', 'NAN', '']: 
