@@ -30,14 +30,23 @@ def procesar_y_generar_html():
 
     def parse_coords(val):
         try:
-            if not str(val).strip(): return None, None
-            p = str(val).split(',')
+            if not val or pd.isna(val) or str(val).strip().upper() in ['NONE', 'NAN', '']: 
+                return None, None
+            v_str = str(val).strip()
+            if ',' not in v_str:
+                return None, None
+            p = v_str.split(',')
             return float(p[0].strip()), float(p[1].strip())
-        except:
+        except Exception:
             return None, None
 
-    df['LAT_TEMP'], df['LON_TEMP'] = zip(*df['LATITUD Y LONGITUD'].map(parse_coords))
-    df_mapa = df.dropna(subset=['LAT_TEMP', 'LON_TEMP'])
+    # Procesamos de forma segura la columna combinada
+    coordenadas_limpias = [parse_coords(x) for x in df['LATITUD Y LONGITUD']]
+    df['LAT_TEMP'] = [c[0] for c in coordenadas_limpias]
+    df['LON_TEMP'] = [c[1] for c in coordenadas_limpias]
+    
+    # Creamos el df_mapa eliminando los registros que no tengan coordenadas válidas
+    df_mapa = df.dropna(subset=['LAT_TEMP', 'LON_TEMP']).copy()
     
     # ─── CONFIGURACIÓN DEL MAPA (SOLUCIÓN REPETICIÓN Y ZOOM) ───
     limites_argentina = [[-59.5, -77.0], [-20.0, -48.0]]
