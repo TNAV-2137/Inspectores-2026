@@ -89,7 +89,11 @@ def procesar_y_generar_html():
     cargos = sorted([str(x) for x in df['CARGO'].unique() if str(x).strip()])
     destinos = sorted([str(x) for x in df['DESTINO'].unique() if str(x).strip()])
     
-    # # Iteración agrupada por coordenadas para evitar superposición física
+    # Redondeamos a 4 decimales para asegurar que los inspectores del mismo edificio caigan EXACTO en el mismo punto
+    df_mapa['LAT_TEMP'] = pd.to_numeric(df_mapa['LAT_TEMP'], errors='coerce').round(4)
+    df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP'], errors='coerce').round(4)
+    
+    # Ahora sí, agrupamos por la coordenada unificada
     inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
     for (lat, lon), grupo in inspectores_por_coordenada:
