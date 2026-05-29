@@ -89,27 +89,43 @@ def procesar_y_generar_html():
     cargos = sorted([str(x) for x in df['CARGO'].unique() if str(x).strip()])
     destinos = sorted([str(x) for x in df['DESTINO'].unique() if str(x).strip()])
     
-    # Iteración por filas individuales para garantizar que aparezcan los 11 puntos (10 zonas + sede)
-    for idx, row in df_mapa.iterrows():
-        lat = row['LAT_TEMP']
-        lon = row['LON_TEMP']
-        
-        pop_html = f"""
-        <div style="width: 240px; font-family: 'Inter', sans-serif; font-size: 12px; padding: 5px;">
-            <div style="background: #080D17; color: #EDB445; padding: 6px 8px; font-weight: bold; border-radius: 4px; border-left: 3px solid #EDB445; font-size: 11px; margin-bottom: 5px;">
-                ZONA: {row['ZONA']} - {row['DESTINO']}
-            </div>
-            <div style="color: #3B7EF6; font-weight: bold; margin-bottom: 2px;">• {row['GRADO']} {row['APELLIDO Y NOMBRE']}</div>
-            <span style="color: #52637A; font-size: 11px;">
-                <b>Esp:</b> {row['ESPECIALIDAD']} | <b>Nivel:</b> {row['NIVEL']}<br>
-                <b>Cargo:</b> {row['CARGO']}
-            </span>
-        </div>
+    # # Iteración agrupada por coordenadas para evitar superposición física
+    inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
+
+    for (lat, lon), grupo in inspectores_por_coordenada:
+        popup_html = """
+        <div style="font-family: 'Inter', sans-serif; min-width: 260px; max-width: 320px; max-height: 250px; overflow-y: auto; padding-right: 5px;">
         """
+        
+        por_destino = grupo.groupby('DESTINO')
+        for destino, personal in por_destino:
+            total_destino = len(personal)
+            popup_html += f"""
+            <div style="background-color: #0D3B66; color: #EDB445; font-weight: bold; font-size: 11px; padding: 6px 8px; margin-top: 6px; margin-bottom: 6px; border-radius: 4px; border-left: 3px solid #EDB445; text-transform: uppercase; letter-spacing: 0.5px;">
+                {destino} (TOTAL: {total_destino})
+            </div>
+            """
+            for _, row in personal.iterrows():
+                zona = row.get('ZONA', '')
+                grado = row.get('GRADO', '')
+                apellido_nombre = row.get('APELLIDO Y NOMBRE', '')
+                especialidad = row.get('ESPECIALIDAD', '')
+                nivel = row.get('NIVEL', '')
+                cargo = row.get('CARGO', '')
+                
+                popup_html += f"""
+                <div style="padding: 4px 6px; border-bottom: 1px solid #eeeeee; font-size: 11px; color: #3B7EF6;">
+                    <strong>• {grado} {apellido_nombre}</strong><br>
+                    <span style="color: #52637A; font-size: 10.5px;">Esp: {especialidad} | Nivel: {nivel}</span><br>
+                    <span style="color: #52637A; font-size: 10.5px; font-style: italic;">Cargo: {cargo}</span>
+                </div>
+                """
+        popup_html += "</div>"
+        
         folium.Marker(
-            [lat, lon], 
-            popup=folium.Popup(pop_html, max_width=260), 
-            icon=folium.Icon(color="blue", icon="anchor", prefix="fa")
+            location=[float(lat), float(lon)],
+            popup=folium.Popup(popup_html, max_width=320),
+            icon=folium.Icon(color='blue', icon='anchor', prefix='fa')
         ).add_to(m)
     
     m.fit_bounds(limites_argentina)
