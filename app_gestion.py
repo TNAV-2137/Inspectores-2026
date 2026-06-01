@@ -98,16 +98,16 @@ def procesar_y_generar_html():
 
     for (lat, lon), grupo in inspectores_por_coordenada:
 
-    print("COORDENADA:", lat, lon)
-    print("CANTIDAD:", len(grupo))
+        print("COORDENADA:", lat, lon)
+        print("CANTIDAD:", len(grupo))
 
-    popup_html = """
-    <div style="
-        font-family:'Inter',sans-serif;
-        min-width:260px;
-        max-width:320px;
-    ">
-    """
+        popup_html = """
+        <div style="
+            font-family:'Inter',sans-serif;
+            min-width:260px;
+            max-width:320px;
+        ">
+        """
 
     por_destino = grupo.groupby('DESTINO')
 
