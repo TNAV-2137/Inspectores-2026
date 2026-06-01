@@ -97,16 +97,16 @@ def procesar_y_generar_html():
     inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
     for (lat, lon), grupo in inspectores_por_coordenada:
-    print("COORDENADA:", lat, lon)
-    print("CANTIDAD:", len(grupo))
+        print("COORDENADA:", lat, lon)
+        print("CANTIDAD:", len(grupo))
 
-    popup_html = """
-    <div style="
-        font-family:'Inter',sans-serif;
-        min-width:260px;
-        max-width:320px;
-    ">
-    """
+        popup_html = """
+        <div style="
+            font-family:'Inter',sans-serif;
+            min-width:260px;
+            max-width:320px;
+        ">
+        """
 
     por_destino = grupo.groupby('DESTINO')
 
@@ -170,19 +170,19 @@ def procesar_y_generar_html():
             </div>
             """
 
+           popup_html += "</div>"
+
         popup_html += "</div>"
 
-    popup_html += "</div>"
-
-    folium.Marker(
-        location=[float(lat), float(lon)],
-        popup=folium.Popup(popup_html, max_width=320),
-        icon=folium.Icon(
-            color='blue',
-            icon='anchor',
-            prefix='fa'
-        )
-    ).add_to(m)
+        folium.Marker(
+            location=[float(lat), float(lon)],
+            popup=folium.Popup(popup_html, max_width=320),
+            icon=folium.Icon(
+                color='blue',
+                icon='anchor',
+                prefix='fa'
+            )
+        ).add_to(m)
     
     m.fit_bounds(limites_argentina)
     raw_map_html = m._repr_html_()
