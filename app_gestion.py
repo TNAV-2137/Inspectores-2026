@@ -17,47 +17,78 @@ engine = create_engine(DATABASE_URL) if DATABASE_URL else None
 DATABASE_TABLE = "inspectores"
 
 def procesar_y_generar_html():
-    # Intentamos leer primero de PostgreSQL
     df = None
     if engine:
         try:
             df = pd.read_sql(f"SELECT * FROM {DATABASE_TABLE}", engine)
-            print("📦 Datos leídos con éxito desde PostgreSQL para el mapa.")
+            print("📦 Datos leídos desde PostgreSQL.")
         except Exception as e:
-            print(f"⚠️ Error al leer de la DB, usando Excel de respaldo: {e}")
+            print(f"⚠️ Error DB: {e}")
 
-    # Si la DB está vacía o falló, usamos el Excel original
-    if df is None:
-        if not os.path.exists(EXCEL_FILE):
-            df_empty = pd.DataFrame(columns=['ZONA', 'GRADO', 'APELLIDO Y NOMBRE', 'ESPECIALIDAD', 'NIVEL', 'CARGO', 'DESTINO', 'TELEFONO', 'CORREO', 'LATITUD Y LONGITUD'])
-            df_empty.to_excel(EXCEL_FILE, index=False)
-        df = pd.read_excel(EXCEL_FILE)
+    if df is None or df.empty:
+        if os.path.exists(EXCEL_FILE):
+            df = pd.read_excel(EXCEL_FILE)
+        else:
+            # Si no hay nada, creamos una fila de prueba para que no quede en 0
+            df = pd.DataFrame([{
+                'ZONA': 'ZONA CENTRAL', 'GRADO': 'OFICIAL', 'APELLIDO Y NOMBRE': 'TEST, CARLOS',
+                'ESPECIALIDAD': 'NAVEGACION', 'NIVEL': 'I', 'CARGO': 'INSPECTOR', 
+                'DESTINO': 'EDIFICIO GUARDACOSTAS', 'TELEFONO': '1234', 'CORREO': 'test@pna.gov.ar',
+                'LATITUD Y LONGITUD': '-34.6111, -58.3644'
+            }])
+            df.to_excel(EXCEL_FILE, index=False)
 
-    # Normalizamos nombres de columnas a mayúsculas
-    df.columns = [c.strip().upper() for c in df.columns]
+    # 1. FORZAMOS MAYÚSCULAS EN LAS COLUMNAS Y QUITAMOS ESPACIOS
+    df.columns = [str(c).strip().upper() for c in df.columns]
 
-    columnas_requeridas = ['ZONA', 'GRADO', 'APELLIDO Y NOMBRE', 'ESPECIALIDAD', 'NIVEL', 'CARGO', 'DESTINO', 'TELEFONO', 'CORREO', 'LATITUD Y LONGITUD']
-    for col in columnas_requeridas:
+    # 2. HOMOLOGACIÓN DE COLUMNAS CRÍTICAS (Buscamos variantes comunes)
+    mapeo_columnas = {
+        'LATITUD Y LONGITUD': ['LATITUD Y LONGITUD', 'COOR', 'COORDENADAS', 'LAT_LON', 'POSICION'],
+        'DESTINO': ['DESTINO', 'DEPENDENCIA', 'LUGAR'],
+        'GRADO': ['GRADO', 'JERARQUIA'],
+        'CARGO': ['CARGO', 'CARGO/FUNCION', 'FUNCION', 'PUESTO']
+    }
+    
+    for oficial, variantes in mapeo_columnas.items():
+        if oficial not in df.columns:
+            for v in variantes:
+                if v in df.columns:
+                    df[oficial] = df[v]
+                    break
+            if oficial not in df.columns:
+                df[oficial] = ""
+
+    # Asegurar que el resto de las columnas requeridas existan
+    for col in ['ZONA', 'APELLIDO Y NOMBRE', 'ESPECIALIDAD', 'NIVEL', 'TELEFONO', 'CORREO']:
         if col not in df.columns:
             df[col] = ""
         else:
             df[col] = df[col].fillna('').astype(str).replace(['-', '<->', 'nan', 'NAN'], '')
+
+    # 3. PARSEO SEGURO DE COORDENADAS
     def parse_coords(val):
         try:
-            if not val or pd.isna(val) or str(val).strip().upper() in ['NONE', 'NAN', '']: 
+            val_str = str(val).strip().upper()
+            if not val_str or val_str in ['NONE', 'NAN', '', '-', '<->']:
                 return None, None
-            v_str = str(val).strip()
-            if ',' not in v_str:
-                return None, None
-            p = v_str.split(',')
-            return float(p[0].strip()), float(p[1].strip())
-        except Exception:
+            if ',' in val_str:
+                p = val_str.split(',')
+                return float(p[0].strip()), float(p[1].strip())
+            return None, None
+        except:
             return None, None
 
-    # Procesamos de forma segura la columna combinada
     coordenadas_limpias = [parse_coords(x) for x in df['LATITUD Y LONGITUD']]
     df['LAT_TEMP'] = [c[0] for c in coordenadas_limpias]
     df['LON_TEMP'] = [c[1] for c in coordenadas_limpias]
+    
+    # Creamos el df para el mapa limpiando solo los nulos reales
+    df_mapa = df.dropna(subset=['LAT_TEMP', 'LON_TEMP']).copy()
+    
+    # Limpieza de textos y redondeo básico
+    df_mapa['DESTINO'] = df_mapa['DESTINO'].astype(str).str.strip().replace(['', 'nan', 'NAN'], 'SIN DESTINO')
+    df_mapa['LAT_TEMP'] = pd.to_numeric(df_mapa['LAT_TEMP']).round(4)
+    df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP']).round(4)
     
     # Creamos el df_mapa eliminando los registros que no tengan coordenadas válidas
     df_mapa = df.dropna(subset=['LAT_TEMP', 'LON_TEMP']).copy()
