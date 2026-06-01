@@ -8,6 +8,12 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 from sqlalchemy import create_engine
 
+# Configuración de Archivos Locales y Puertos por Defecto
+EXCEL_FILE = "inspectores.xlsx"
+HTML_OUTPUT = "index_mapa.html"
+PORT = 8080
+LOGO_PATH = "https://www.prefecturanaval.gob.ar/assets/img/logo_pna.png" # Ajustar si usás ruta interna
+
 # Configuración de Base de Datos
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
@@ -42,6 +48,7 @@ def procesar_y_generar_html():
             df[col] = ""
         else:
             df[col] = df[col].fillna('').astype(str).replace(['-', '<->', 'nan', 'NAN'], '')
+
     def parse_coords(val):
         try:
             if not val or pd.isna(val) or str(val).strip().upper() in ['NONE', 'NAN', '']: 
@@ -62,16 +69,25 @@ def procesar_y_generar_html():
     # Creamos el df_mapa eliminando los registros que no tengan coordenadas válidas
     df_mapa = df.dropna(subset=['LAT_TEMP', 'LON_TEMP']).copy()
     
+    # Limpieza estricta de strings y redondeo de decimales para unificar edificios
+    df_mapa['DESTINO'] = df_mapa['DESTINO'].fillna('').astype(str).str.strip()
+    df_mapa['DESTINO'] = df_mapa['DESTINO'].apply(lambda x: "SIN DESTINO ASIGNADO" if x in ['', 'nan', 'NAN', '-', '<->'] else x)
+    df_mapa['ZONA'] = df_mapa['ZONA'].fillna('').astype(str).str.strip()
+    
+    df_mapa['LAT_TEMP'] = pd.to_numeric(df_mapa['LAT_TEMP'], errors='coerce').round(4)
+    df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP'], errors='coerce').round(4)
+    df_mapa = df_mapa.dropna(subset=['LAT_TEMP', 'LON_TEMP'])
+    
     # ─── CONFIGURACIÓN DEL MAPA (SOLUCIÓN REPETICIÓN Y ZOOM) ───
     limites_argentina = [[-59.5, -77.0], [-20.0, -48.0]]
 
     m = folium.Map(
         location=[-38.4161, -63.6167],
         zoom_start=4.6,
-        tiles='cartodbpositron',          # Evita la carga de mapas infinitos predeterminados
-        min_zoom=3.9,                      # Límite máximo para alejar el zoom
+        tiles='cartodbpositron',
+        min_zoom=3.9,
         max_zoom=15,
-        max_bounds=True,     # Restringe el movimiento fuera de la zona
+        max_bounds=True,
         min_lat=-60.0,
         max_lat=-20.0,
         min_lon=-75.0,
@@ -89,121 +105,69 @@ def procesar_y_generar_html():
     cargos = sorted([str(x) for x in df['CARGO'].unique() if str(x).strip()])
     destinos = sorted([str(x) for x in df['DESTINO'].unique() if str(x).strip()])
     
-    # Redondeamos a 4 decimales para asegurar que los inspectores del mismo edificio caigan EXACTO en el mismo punto
-    df_mapa['LAT_TEMP'] = pd.to_numeric(df_mapa['LAT_TEMP'], errors='coerce').round(4)
-    df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP'], errors='coerce').round(4)
-    
-    # Ahora sí, agrupamos por la coordenada unificada
+    # Agrupamos por la coordenada unificada
     inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
+    # TODO ESTE BLOQUE AHORA TIENE LA SANGRA CORRECTA EN PYTHON
     for (lat, lon), grupo in inspectores_por_coordenada:
-
-        print("COORDENADA:", lat, lon)
-        print("CANTIDAD:", len(grupo))
+        print(f"COORDENADA EN PROCESO: {lat}, {lon} | CANTIDAD PERSONAL: {len(grupo)}")
 
         popup_html = """
-        <div style="
-            font-family:'Inter',sans-serif;
-            min-width:260px;
-            max-width:320px;
-        ">
+        <div style="font-family:'Inter',sans-serif; min-width:260px; max-width:320px; max-height:250px; overflow-y:auto; padding-right:5px;">
         """
 
-    por_destino = grupo.groupby('DESTINO')
+        por_destino = grupo.groupby('DESTINO')
 
-    for destino, personal in por_destino:
-
-        total_destino = len(personal)
-
-        popup_html += f"""
-        <div style="
-            background:#0D3B66;
-            color:#EDB445;
-            font-weight:bold;
-            font-size:11px;
-            padding:6px 8px;
-            border-radius:4px;
-            margin-bottom:6px;
-        ">
-            {destino} (TOTAL: {total_destino})
-        </div>
-
-        <div style="
-            max-height:170px;
-            overflow-y:auto;
-            border:1px solid #1f2937;
-            border-radius:4px;
-            margin-bottom:10px;
-            padding:4px;
-        ">
-        """
-
-        for _, row in personal.iterrows():
-
-            zona = row.get('ZONA', '')
-            grado = row.get('GRADO', '')
-            apellido_nombre = row.get('APELLIDO Y NOMBRE', '')
-            especialidad = row.get('ESPECIALIDAD', '')
-            nivel = row.get('NIVEL', '')
-            cargo = row.get('CARGO', '')
+        for destino, personal in por_destino:
+            total_destino = len(personal)
 
             popup_html += f"""
-            <div style="
-                padding:4px 6px;
-                border-bottom:1px solid #eeeeee;
-                font-size:11px;
-                color:#3B7EF6;
-            ">
-                <strong>{grado} {apellido_nombre}</strong><br>
-
-                <span style="color:#52637A; font-size:10.5px;">
-                    Esp: {especialidad} |
-                    Nivel: {nivel}
-                </span><br>
-
-                <span style="
-                    color:#52637A;
-                    font-size:10.5px;
-                    font-style:italic;
-                ">
-                    Cargo: {cargo}
-                </span>
+            <div style="background:#0D3B66; color:#EDB445; font-weight:bold; font-size:11px; padding:6px 8px; border-radius:4px; margin-top:6px; margin-bottom:6px; border-left:3px solid #EDB445; text-transform:uppercase; letter-spacing:0.5px;">
+                {destino} (TOTAL: {total_destino})
             </div>
             """
 
+            for _, row in personal.iterrows():
+                grado = row.get('GRADO', '').strip()
+                apellido_nombre = row.get('APELLIDO Y NOMBRE', '').strip()
+                especialidad = row.get('ESPECIALIDAD', '').strip()
+                nivel = row.get('NIVEL', '').strip()
+                cargo = row.get('CARGO', '').strip()
+
+                popup_html += f"""
+                <div style="padding:4px 6px; border-bottom:1px solid #eeeeee; font-size:11px; color:#3B7EF6; line-height:1.4;">
+                    <strong>• {grado} {apellido_nombre}</strong><br>
+                    <span style="color:#52637A; font-size:10.5px;">Esp: {especialidad} | Nivel: {nivel}</span><br>
+                    <span style="color:#52637A; font-size:10.5px; font-style:italic;">Cargo: {cargo}</span>
+                </div>
+                """
+
         popup_html += "</div>"
 
-    popup_html += "</div>"
+        folium.Marker(
+            location=[float(lat), float(lon)],
+            popup=folium.Popup(popup_html, max_width=320),
+            icon=folium.Icon(color='blue', icon='anchor', prefix='fa')
+        ).add_to(m)
 
-    folium.Marker(
-        location=[float(lat), float(lon)],
-        popup=folium.Popup(popup_html, max_width=320),
-        icon=folium.Icon(
-            color='blue',
-            icon='anchor',
-            prefix='fa'
-        )
-    ).add_to(m)
+    # El ajuste de límites ahora se ejecuta correctamente al terminar el bucle
+    m.fit_bounds(limites_argentina)
 
-# ← TERMINA EL FOR
+    raw_map_html = m._repr_html_()
 
-m.fit_bounds(limites_argentina)
-
-raw_map_html = m._repr_html_()
-
-map_html = f"""
-<div style="width: 100%; height: 100%; position: relative;">
-    {raw_map_html}
-</div>
-<style>
-    .folium-map {{ width:100% !important; height:100% !important; }}
-    ::-webkit-scrollbar {{ width:5px; }}
-    ::-webkit-scrollbar-track {{ background:rgba(255,255,255,0.02); }}
-    ::-webkit-scrollbar-thumb {{ background:rgba(255,255,255,0.15); border-radius:4px; }}
-    .btn-delete{{background:#7A1D1D; color:white; border:none;}}
-    .btn-delete:hover{{background:#A52A2A;}}
-</style>
-"""
+    map_html = f"""
+    <div style="width: 100%; height: 100%; position: relative;">
+        {raw_map_html}
+    </div>
+    <style>
+        .folium-map {{ width:100% !important; height:100% !important; }}
+        ::-webkit-scrollbar {{ width:5px; }}
+        ::-webkit-scrollbar-track {{ background:rgba(255,255,255,0.02); }}
+        ::-webkit-scrollbar-thumb {{ background:rgba(255,255,255,0.15); border-radius:4px; }}
+        .btn-delete{{background:#7A1D1D; color:white; border:none;}}
+        .btn-delete:hover{{background:#A52A2A;}}
+    </style>
+    """
 
     opt_g = "".join(f'<option value="{x}">{x}</option>' for x in grados)
     opt_e = "".join(f'<option value="{x}">{x}</option>' for x in esps)
@@ -211,7 +175,6 @@ map_html = f"""
     opt_d = "".join(f'<option value="{x}">{x}</option>' for x in destinos)
 
     filas_html = ""
-    from folium.plugins import MarkerCluster
     for idx, r in df.iterrows():
         filas_html += f"""
         <tr onclick="seleccionarFila(this)" data-idx="{idx}" data-grado="{r['GRADO']}" data-especialidad="{r['ESPECIALIDAD']}" data-cargo="{r['CARGO']}" data-destino="{r['DESTINO']}">
@@ -233,7 +196,7 @@ map_html = f"""
     <head>
         <meta charset="UTF-8">
         <title>DPSN · Panel Técnico de Navegación</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght=400;500;600;700&family=Space+Grotesk:wght=600;700&family=JetBrains+Mono:wght=500;600&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
         <style>
             :root {{
                 --bg: #05080F; --bg-card: #080D17; --bg-card2: #111827; --border: rgba(255, 255, 255, 0.06);
@@ -543,6 +506,7 @@ class ServidorPanelControl(SimpleHTTPRequestHandler):
         length = int(self.headers['Content-Length'])
         post_data = json.loads(self.rfile.read(length).decode('utf-8'))
         
+        # Intentamos levantar el Excel o sincronizar según corresponda
         df = pd.read_excel(EXCEL_FILE)
         df.columns = [c.strip().upper() for c in df.columns]
         
@@ -599,11 +563,9 @@ class ServidorPanelControl(SimpleHTTPRequestHandler):
 def iniciar_servidor_seguro():
     procesar_y_generar_html()
     
-    # DETECCIÓN DE ENTORNO EN LA NUBE: 
-    # Render asigna un puerto dinámico mediante la variable 'PORT'. Si no existe, usa el 8080.
+    # DETECCIÓN DE ENTORNO EN LA NUBE
     PUERTO_NUBE = int(os.environ.get("PORT", PORT))
     
-    # Escuchamos en 0.0.0.0 y en el puerto que nos exige la nube
     server = HTTPServer(('0.0.0.0', PUERTO_NUBE), ServidorPanelControl)
     
     print("\n" + "="*50)
@@ -611,8 +573,6 @@ def iniciar_servidor_seguro():
     print(f" Escuchando peticiones en el puerto: {PUERTO_NUBE}")
     print("="*50 + "\n")
     
-    # CONTROL CRÍTICO: Solo abre el navegador si estás en tu PC local.
-    # En Render (Linux Server), 'os.environ.get("PORT")' existe, por lo que NO intentará abrir el navegador.
     if "PORT" not in os.environ:
         try:
             webbrowser.open(f'http://localhost:{PUERTO_NUBE}')
