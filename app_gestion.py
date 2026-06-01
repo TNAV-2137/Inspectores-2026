@@ -95,64 +95,68 @@ def procesar_y_generar_html():
         control_scale=True
     )
     
-    # Métricas superiores
+   # --- [Métricas superiores] ---
     total_inspectores = len(df)
     total_destinos = df['DESTINO'].nunique()
     total_zonas = df['ZONA'].dropna().nunique()
 
+    # --- [Listas para Filtros Desplegables] ---
     grados = sorted([str(x) for x in df['GRADO'].unique() if str(x).strip()])
     esps = sorted([str(x) for x in df['ESPECIALIDAD'].unique() if str(x).strip()])
     cargos = sorted([str(x) for x in df['CARGO'].unique() if str(x).strip()])
     destinos = sorted([str(x) for x in df['DESTINO'].unique() if str(x).strip()])
-    
-    # Agrupamos por la coordenada unificada
+
+    # --- [Iteración Agrupada por Coordenadas para el Mapa] ---
     inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
-    # TODO ESTE BLOQUE AHORA TIENE LA SANGRA CORRECTA EN PYTHON
     for (lat, lon), grupo in inspectores_por_coordenada:
-        print(f"COORDENADA EN PROCESO: {lat}, {lon} | CANTIDAD PERSONAL: {len(grupo)}")
-
+        # Contenedor del Popup único para esta coordenada física
         popup_html = """
-        <div style="font-family:'Inter',sans-serif; min-width:260px; max-width:320px; max-height:250px; overflow-y:auto; padding-right:5px;">
+        <div style="font-family: 'Inter', sans-serif; min-width: 260px; max-width: 320px; max-height: 250px; overflow-y: auto; padding-right: 5px;">
         """
-
+        
+        # Agrupamos por destino dentro de esta misma coordenada
         por_destino = grupo.groupby('DESTINO')
-
+        
         for destino, personal in por_destino:
             total_destino = len(personal)
-
+            
+            # Encabezado del Destino específico dentro de la ubicación
             popup_html += f"""
-            <div style="background:#0D3B66; color:#EDB445; font-weight:bold; font-size:11px; padding:6px 8px; border-radius:4px; margin-top:6px; margin-bottom:6px; border-left:3px solid #EDB445; text-transform:uppercase; letter-spacing:0.5px;">
+            <div style="background-color: #0D3B66; color: #EDB445; font-weight: bold; font-size: 11px; padding: 6px 8px; margin-top: 6px; margin-bottom: 6px; border-radius: 4px; border-left: 3px solid #EDB445; text-transform: uppercase; letter-spacing: 0.5px;">
                 {destino} (TOTAL: {total_destino})
             </div>
             """
-
+            
+            # Listamos cada inspector perteneciente a este destino específico
             for _, row in personal.iterrows():
-                grado = row.get('GRADO', '').strip()
-                apellido_nombre = row.get('APELLIDO Y NOMBRE', '').strip()
-                especialidad = row.get('ESPECIALIDAD', '').strip()
-                nivel = row.get('NIVEL', '').strip()
-                cargo = row.get('CARGO', '').strip()
-
+                zona = row.get('ZONA', '')
+                grado = row.get('GRADO', '')
+                apellido_nombre = row.get('APELLIDO Y NOMBRE', '')
+                especialidad = row.get('ESPECIALIDAD', '')
+                nivel = row.get('NIVEL', '')
+                cargo = row.get('CARGO', '')
+                
                 popup_html += f"""
-                <div style="padding:4px 6px; border-bottom:1px solid #eeeeee; font-size:11px; color:#3B7EF6; line-height:1.4;">
+                <div style="padding: 4px 6px; border-bottom: 1px solid #eeeeee; font-size: 11px; color: #3B7EF6;">
                     <strong>• {grado} {apellido_nombre}</strong><br>
-                    <span style="color:#52637A; font-size:10.5px;">Esp: {especialidad} | Nivel: {nivel}</span><br>
-                    <span style="color:#52637A; font-size:10.5px; font-style:italic;">Cargo: {cargo}</span>
+                    <span style="color: #52637A; font-size: 10.5px;">Esp: {especialidad} | Nivel: {nivel}</span><br>
+                    <span style="color: #52637A; font-size: 10.5px; font-style: italic;">Cargo: {cargo}</span>
                 </div>
                 """
-
+                
+        # Cerramos el contenedor principal del popup
         popup_html += "</div>"
-
+        
+        # Agregamos el marcador único con el acumulado de todos los destinos
         folium.Marker(
             location=[float(lat), float(lon)],
             popup=folium.Popup(popup_html, max_width=320),
             icon=folium.Icon(color='blue', icon='anchor', prefix='fa')
         ).add_to(m)
 
-    # El ajuste de límites ahora se ejecuta correctamente al terminar el bucle
+    # --- [Líneas finales de renderizado] ---
     m.fit_bounds(limites_argentina)
-
     raw_map_html = m._repr_html_()
 
     map_html = f"""
