@@ -94,19 +94,20 @@ def procesar_y_generar_html():
     df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP'], errors='coerce').round(4)
     
     # Ahora sí, agrupamos por la coordenada unificada
-    inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
+inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
-    for (lat, lon), grupo in inspectores_por_coordenada:
-        print("COORDENADA:", lat, lon)
-        print("CANTIDAD:", len(grupo))
+for (lat, lon), grupo in inspectores_por_coordenada:
 
-        popup_html = """
-        <div style="
-            font-family:'Inter',sans-serif;
-            min-width:260px;
-            max-width:320px;
-        ">
-        """
+    print("COORDENADA:", lat, lon)
+    print("CANTIDAD:", len(grupo))
+
+    popup_html = """
+    <div style="
+        font-family:'Inter',sans-serif;
+        min-width:260px;
+        max-width:320px;
+    ">
+    """
 
     por_destino = grupo.groupby('DESTINO')
 
@@ -170,36 +171,39 @@ def procesar_y_generar_html():
             </div>
             """
 
-           popup_html += "</div>"
-
         popup_html += "</div>"
 
-        folium.Marker(
-            location=[float(lat), float(lon)],
-            popup=folium.Popup(popup_html, max_width=320),
-            icon=folium.Icon(
-                color='blue',
-                icon='anchor',
-                prefix='fa'
-            )
-        ).add_to(m)
-    
-    m.fit_bounds(limites_argentina)
-    raw_map_html = m._repr_html_()
-    
-    map_html = f"""
-    <div style="width: 100%; height: 100%; position: relative;">
-        {raw_map_html}
-    </div>
-    <style>
-        .folium-map {{ width: 100% !important; height: 100% !important;}}
-        ::-webkit-scrollbar {{ width: 5px; }}
-        ::-webkit-scrollbar-track {{ background: rgba(255,255,255,0.02); }}
-        ::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.15); border-radius: 4px; }}
-        .btn-delete{{background:#7A1D1D; color:white; border:none;}}
-        .btn-delete:hover{{background:#A52A2A;}}
-    </style>
-    """
+    popup_html += "</div>"
+
+    folium.Marker(
+        location=[float(lat), float(lon)],
+        popup=folium.Popup(popup_html, max_width=320),
+        icon=folium.Icon(
+            color='blue',
+            icon='anchor',
+            prefix='fa'
+        )
+    ).add_to(m)
+
+# ← TERMINA EL FOR
+
+m.fit_bounds(limites_argentina)
+
+raw_map_html = m._repr_html_()
+
+map_html = f"""
+<div style="width: 100%; height: 100%; position: relative;">
+    {raw_map_html}
+</div>
+<style>
+    .folium-map {{ width:100% !important; height:100% !important; }}
+    ::-webkit-scrollbar {{ width:5px; }}
+    ::-webkit-scrollbar-track {{ background:rgba(255,255,255,0.02); }}
+    ::-webkit-scrollbar-thumb {{ background:rgba(255,255,255,0.15); border-radius:4px; }}
+    .btn-delete{{background:#7A1D1D; color:white; border:none;}}
+    .btn-delete:hover{{background:#A52A2A;}}
+</style>
+"""
 
     opt_g = "".join(f'<option value="{x}">{x}</option>' for x in grados)
     opt_e = "".join(f'<option value="{x}">{x}</option>' for x in esps)
