@@ -94,9 +94,9 @@ def procesar_y_generar_html():
     df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP'], errors='coerce').round(4)
     
     # Ahora sí, agrupamos por la coordenada unificada
-inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
+    inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
-for (lat, lon), grupo in inspectores_por_coordenada:
+    for (lat, lon), grupo in inspectores_por_coordenada:
 
     print("COORDENADA:", lat, lon)
     print("CANTIDAD:", len(grupo))
