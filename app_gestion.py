@@ -97,6 +97,8 @@ def procesar_y_generar_html():
     inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
 for (lat, lon), grupo in inspectores_por_coordenada:
+    print("COORDENADA:", lat, lon)
+    print("CANTIDAD:", len(grupo))
 
     popup_html = """
     <div style="
