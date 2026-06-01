@@ -84,106 +84,74 @@ def procesar_y_generar_html():
     total_destinos = df['DESTINO'].nunique()
     total_zonas = df['ZONA'].dropna().nunique()
 
+    # --- [Listas para Filtros Desplegables] ---
     grados = sorted([str(x) for x in df['GRADO'].unique() if str(x).strip()])
     esps = sorted([str(x) for x in df['ESPECIALIDAD'].unique() if str(x).strip()])
-    cargos = sorted([str(x) for x in df['CARGO'].unique() if str(x).strip()])
     destinos = sorted([str(x) for x in df['DESTINO'].unique() if str(x).strip()])
     
-    # Redondeamos a 4 decimales para asegurar que los inspectores del mismo edificio caigan EXACTO en el mismo punto
-    df_mapa['LAT_TEMP'] = pd.to_numeric(df_mapa['LAT_TEMP'], errors='coerce').round(4)
-    df_mapa['LON_TEMP'] = pd.to_numeric(df_mapa['LON_TEMP'], errors='coerce').round(4)
-    
-    # Ahora sí, agrupamos por la coordenada unificada
+    # Intentamos detectar cómo se llama la columna de cargo para evitar que se rompa
+    columna_cargo = None
+    for col in ['CARGO', 'Cargo', 'cargo', 'Cargo/Funcion', 'CARGO/FUNCION']:
+        if col in df.columns:
+            columna_cargo = col
+            break
+            
+    # Si existe la columna la listamos, si no, dejamos una lista vacía
+    if columna_cargo:
+        cargos = sorted([str(x) for x in df[columna_cargo].unique() if str(x).strip()])
+    else:
+        cargos = []
+
+    # --- [Iteración Agrupada por Coordenadas para el Mapa] ---
     inspectores_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
 
     for (lat, lon), grupo in inspectores_por_coordenada:
-
-        print("COORDENADA:", lat, lon)
-        print("CANTIDAD:", len(grupo))
-
+        # Contenedor del Popup único para esta coordenada física
         popup_html = """
-        <div style="
-            font-family:'Inter',sans-serif;
-            min-width:260px;
-            max-width:320px;
-        ">
+        <div style="font-family: 'Inter', sans-serif; min-width: 260px; max-width: 320px; max-height: 250px; overflow-y: auto; padding-right: 5px;">
         """
-
-    por_destino = grupo.groupby('DESTINO')
-
-    for destino, personal in por_destino:
-
-        total_destino = len(personal)
-
-        popup_html += f"""
-        <div style="
-            background:#0D3B66;
-            color:#EDB445;
-            font-weight:bold;
-            font-size:11px;
-            padding:6px 8px;
-            border-radius:4px;
-            margin-bottom:6px;
-        ">
-            {destino} (TOTAL: {total_destino})
-        </div>
-
-        <div style="
-            max-height:170px;
-            overflow-y:auto;
-            border:1px solid #1f2937;
-            border-radius:4px;
-            margin-bottom:10px;
-            padding:4px;
-        ">
-        """
-
-        for _, row in personal.iterrows():
-
-            zona = row.get('ZONA', '')
-            grado = row.get('GRADO', '')
-            apellido_nombre = row.get('APELLIDO Y NOMBRE', '')
-            especialidad = row.get('ESPECIALIDAD', '')
-            nivel = row.get('NIVEL', '')
-            cargo = row.get('CARGO', '')
-
+        
+        # Agrupamos por destino dentro de esta misma coordenada
+        por_destino = grupo.groupby('DESTINO')
+        
+        for destino, personal in por_destino:
+            total_destino = len(personal)
+            
+            # Encabezado del Destino específico dentro de la ubicación
             popup_html += f"""
-            <div style="
-                padding:4px 6px;
-                border-bottom:1px solid #eeeeee;
-                font-size:11px;
-                color:#3B7EF6;
-            ">
-                <strong>{grado} {apellido_nombre}</strong><br>
-
-                <span style="color:#52637A; font-size:10.5px;">
-                    Esp: {especialidad} |
-                    Nivel: {nivel}
-                </span><br>
-
-                <span style="
-                    color:#52637A;
-                    font-size:10.5px;
-                    font-style:italic;
-                ">
-                    Cargo: {cargo}
-                </span>
+            <div style="background-color: #0D3B66; color: #EDB445; font-weight: bold; font-size: 11px; padding: 6px 8px; margin-top: 6px; margin-bottom: 6px; border-radius: 4px; border-left: 3px solid #EDB445; text-transform: uppercase; letter-spacing: 0.5px;">
+                {destino} (TOTAL: {total_destino})
             </div>
             """
-
+            
+            # Listamos cada inspector perteneciente a este destino específico
+            for _, row in personal.iterrows():
+                zona = row.get('ZONA', '')
+                grado = row.get('GRADO', '')
+                apellido_nombre = row.get('APELLIDO Y NOMBRE', '')
+                especialidad = row.get('ESPECIALIDAD', '')
+                nivel = row.get('NIVEL', '')
+                
+                # Buscamos el cargo dinámicamente con la columna detectada
+                cargo_val = row.get(columna_cargo, '') if columna_cargo else ''
+                
+                popup_html += f"""
+                <div style="padding: 4px 6px; border-bottom: 1px solid #eeeeee; font-size: 11px; color: #3B7EF6;">
+                    <strong>• {grado} {apellido_nombre}</strong><br>
+                    <span style="color: #52637A; font-size: 10.5px;">Esp: {especialidad} | Nivel: {nivel}</span><br>
+                    <span style="color: #52637A; font-size: 10.5px; font-style: italic;">Cargo: {cargo_val}</span>
+                </div>
+                """
+                
+        # Cerramos el contenedor principal del popup
         popup_html += "</div>"
-
-    popup_html += "</div>"
-
-    folium.Marker(
-        location=[float(lat), float(lon)],
-        popup=folium.Popup(popup_html, max_width=320),
-        icon=folium.Icon(
-            color='blue',
-            icon='anchor',
-            prefix='fa'
-        )
-    ).add_to(m)
+        
+        # Agregamos el marcador único con el acumulado de todos los destinos
+        folium.Marker(
+            location=[float(lat), float(lon)],
+            popup=folium.Popup(popup_html, max_width=320),
+            icon=folium.Icon(color='blue', icon='anchor', prefix='fa')
+        ).add_to(m)
 
 # ← TERMINA EL FOR
 
