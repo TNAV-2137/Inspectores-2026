@@ -66,26 +66,44 @@ def procesar_y_generar_html():
     cargos = sorted([str(x) for x in df['CARGO'].unique() if str(x).strip()])
     destinos = sorted([str(x) for x in df['DESTINO'].unique() if str(x).strip()])
     
-    # Iteración por filas individuales para garantizar que aparezcan los 11 puntos (10 zonas + sede)
-    for idx, row in df_mapa.iterrows():
-        lat = row['LAT_TEMP']
-        lon = row['LON_TEMP']
-        
-        pop_html = f"""
-        <div style="width: 240px; font-family: 'Inter', sans-serif; font-size: 12px; padding: 5px;">
-            <div style="background: #080D17; color: #EDB445; padding: 6px 8px; font-weight: bold; border-radius: 4px; border-left: 3px solid #EDB445; font-size: 11px; margin-bottom: 5px;">
-                ZONA: {row['ZONA']} - {row['DESTINO']}
-            </div>
-            <div style="color: #3B7EF6; font-weight: bold; margin-bottom: 2px;">• {row['GRADO']} {row['APELLIDO Y NOMBRE']}</div>
-            <span style="color: #52637A; font-size: 11px;">
-                <b>Esp:</b> {row['ESPECIALIDAD']} | <b>Nivel:</b> {row['NIVEL']}<br>
-                <b>Cargo:</b> {row['CARGO']}
-            </span>
-        </div>
+        # Agrupar inspectores por coordenada, igual que Streamlit
+    grupos_por_coordenada = df_mapa.groupby(['LAT_TEMP', 'LON_TEMP'])
+
+    for (lat, lon), grupo_local in grupos_por_coordenada:
+
+        pop_html = """
+        <div style="width: 280px; max-height: 250px; overflow-y: auto; overflow-x: hidden;
+                    font-family: 'Segoe UI', Arial, sans-serif; padding-right: 5px;">
         """
+
+        subgrupos_destino = grupo_local.groupby('DESTINO')
+
+        for destino, subgrupo in subgrupos_destino:
+            total_destino = len(subgrupo)
+
+            pop_html += f"""
+            <div style="background-color: #003366; color: white; padding: 6px; margin-top: 10px;
+                        font-size: 11px; font-weight: bold; border-radius: 4px 4px 0 0;
+                        text-align: center; text-transform: uppercase;">
+                {destino} (TOTAL: {total_destino})
+            </div>
+            """
+
+            for _, row in subgrupo.iterrows():
+                pop_html += f"""
+                <div style="border: 1px solid #ccc; border-top: none; padding: 8px;
+                            background-color: #f8f9fa; font-size: 11px; margin-bottom: 2px;">
+                    <b style="color: #003366;">{row.get('GRADO', '')} {row.get('APELLIDO Y NOMBRE', '')}</b><br>
+                    <b>Esp:</b> {row.get('ESPECIALIDAD', '')} | <b>Nivel:</b> {row.get('NIVEL', '')}<br>
+                    <b>Cargo:</b> {row.get('CARGO', 'SIN ESPECIFICAR')}
+                </div>
+                """
+
+        pop_html += "</div>"
+
         folium.Marker(
-            [lat, lon], 
-            popup=folium.Popup(pop_html, max_width=260), 
+            [lat, lon],
+            popup=folium.Popup(pop_html, max_width=300),
             icon=folium.Icon(color="blue", icon="anchor", prefix="fa")
         ).add_to(m)
     
